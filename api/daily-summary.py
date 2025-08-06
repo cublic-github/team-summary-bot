@@ -137,25 +137,11 @@ def post_to_discord(summary):
 app = Flask(__name__)
 
 
-@app.route("/api/daily-summary", methods=["POST"])
+@app.route("/api/daily-summary", methods=["GET", "POST"])
 def daily_summary():
-    try:
-        all_text = build_all_text()
-        summary = generate_summary(all_text)
-        today = datetime.datetime.now(JST)
-        weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-        day_of_week = weekdays[today.weekday()]
-        title = f"🗓️ {today.strftime('%Y年%m月%d日')}（{day_of_week}）投稿サマリー（全チャンネル確認済）\n\n"
-        final_summary = title + summary
-        # Discordに投稿
-        if post_to_discord(final_summary):
-            return jsonify(
-                {"status": "success", "message": "投稿完了", "summary": final_summary}
-            )
-        else:
-            return jsonify({"status": "error", "message": "投稿失敗"}), 500
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    print("hello")  # デバッグ用
+    # ここにサマリー生成・投稿処理
+    return jsonify({"status": "ok"})
 
 
 @app.errorhandler(Exception)
