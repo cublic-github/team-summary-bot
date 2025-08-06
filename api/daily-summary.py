@@ -37,7 +37,9 @@ def get_channel_messages(channel_id, since_dt):
     messages = r.json()
     filtered = []
     for msg in messages:
-        msg_dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
+        msg_dt = datetime.datetime.fromisoformat(
+            msg["timestamp"].replace("Z", "+00:00")
+        )
         if msg_dt > since_dt:
             filtered.append(msg)
     print(f"  → {len(filtered)}件のメッセージを取得")
@@ -58,7 +60,9 @@ def build_all_text():
             all_text += "投稿なし\n"
         else:
             for msg in reversed(messages):
-                dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")).astimezone(JST)
+                dt = datetime.datetime.fromisoformat(
+                    msg["timestamp"].replace("Z", "+00:00")
+                ).astimezone(JST)
                 time_str = dt.strftime("%H:%M")
                 author = msg["author"]["username"]
                 content = msg["content"]
