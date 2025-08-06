@@ -139,9 +139,11 @@ app = Flask(__name__)
 
 @app.route("/api/daily-summary", methods=["GET", "POST"])
 def daily_summary():
-    # ここにサマリー生成・投稿処理
-    result = run_summary_job()  # あなたの処理
-    return jsonify(result)
+    all_text = build_all_text()
+    summary = generate_summary(all_text)
+    # Discord投稿処理もここで呼び出す
+    post_to_discord(summary)
+    return jsonify({"status": "success", "summary": summary})
 
 
 @app.errorhandler(Exception)
