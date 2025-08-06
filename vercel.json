@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "api/daily_summary.py": {
+      "runtime": "python3.9",
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/daily_summary",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}
