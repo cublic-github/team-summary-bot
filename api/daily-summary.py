@@ -118,10 +118,10 @@ botによる自動投稿（例：cron、通知系）も含めます。
     return response.text
 
 
-def post_to_discord(summary):
+def post_to_discord(final_summary):
     # 2000文字ごとに分割して送信
-    for i in range(0, len(summary), 2000):
-        chunk = summary[i : i + 2000]
+    for i in range(0, len(final_summary), 2000):
+        chunk = final_summary[i : i + 2000]
         data = {"content": chunk}
         r = requests.post(
             WEBHOOK_URL,
@@ -141,9 +141,15 @@ app = Flask(__name__)
 def daily_summary():
     all_text = build_all_text()
     summary = generate_summary(all_text)
-    # Discord投稿処理もここで呼び出す
-    post_to_discord(summary)
-    return jsonify({"status": "success", "summary": summary})
+    # タイトルをPythonで付与
+    JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
+    today = datetime.datetime.now(JST)
+    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    day_of_week = weekdays[today.weekday()]
+    title = f"🗓️ {today.strftime('%Y年%m月%d日')}（{day_of_week}）サマリー\n\n"
+    final_summary = title + summary
+    post_to_discord(final_summary)
+    return jsonify({"status": "success", "summary": final_summary})
 
 
 @app.errorhandler(Exception)
@@ -159,4 +165,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-    app.run(host="0.0.0.0", port=5001, debug=True)  # 5001や5002など空いているポートに
+    app.run(host="0.0.0.0", port=5001, debug=True)
