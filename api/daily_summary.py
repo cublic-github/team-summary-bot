@@ -192,39 +192,33 @@ botによる自動投稿（例：cron、通知系）も含めます。
         await client.close()
 
 
-def handler(request):
+def handler(request, response):
     """Vercel Serverless Function のエントリーポイント"""
 
     # POSTリクエストの場合のみ処理
     if request.method != "POST":
-        return {
-            "statusCode": 405,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(
-                {"error": "Method not allowed. Use POST method."}, ensure_ascii=False
-            ),
-        }
+        response.status_code = 405
+        response.headers["Content-Type"] = "application/json"
+        return json.dumps(
+            {"error": "Method not allowed. Use POST method."}, ensure_ascii=False
+        )
 
     try:
         # 非同期処理を実行
         result = asyncio.run(create_discord_summary())
 
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(result, ensure_ascii=False),
-        }
+        response.status_code = 200
+        response.headers["Content-Type"] = "application/json"
+        return json.dumps(result, ensure_ascii=False)
 
     except Exception as e:
         print(f"❌ ハンドラーエラー: {e}")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(
-                {"status": "error", "message": f"Internal server error: {str(e)}"},
-                ensure_ascii=False,
-            ),
-        }
+        response.status_code = 500
+        response.headers["Content-Type"] = "application/json"
+        return json.dumps(
+            {"status": "error", "message": f"Internal server error: {str(e)}"},
+            ensure_ascii=False,
+        )
 
 
 # Vercel用のエクスポート
