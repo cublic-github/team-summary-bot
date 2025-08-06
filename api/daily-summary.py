@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()  # .envファイルから環境変数を読み込む
 import requests
 import datetime
 import google.generativeai as genai
@@ -19,33 +22,43 @@ def get_channel_list():
     return [ch for ch in r.json() if ch["type"] == 0]  # type=0: text channel
 
 
-def get_channel_messages(channel_id, since_iso):
+def get_channel_messages(channel_id, since_dt):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
-    params = {"limit": 100, "after": since_iso}
+    params = {"limit": 100}
     r = requests.get(url, headers=headers, params=params)
-    r.raise_for_status()
-    return r.json()
+    print(f"Channel: {channel_id}, Status: {r.status_code}")
+    if r.status_code == 403:
+        print(f"  → 権限なし")
+        return None
+    if r.status_code != 200:
+        print(f"  → エラー: {r.text}")
+        return None
+    messages = r.json()
+    filtered = []
+    for msg in messages:
+        msg_dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00"))
+        if msg_dt > since_dt:
+            filtered.append(msg)
+    print(f"  → {len(filtered)}件のメッセージを取得")
+    return filtered
 
 
 def build_all_text():
-    since = (datetime.datetime.now(JST) - datetime.timedelta(days=1)).isoformat()
+    since_dt = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     all_text = ""
     for ch in get_channel_list():
-        all_text += f"\n\n--- チャンネル: #{ch['name']} ---\n"
-        try:
-            messages = get_channel_messages(ch["id"], since)
-        except Exception as e:
-            all_text += f"取得エラー: {e}\n"
+        print(f"--- チャンネル: #{ch['name']} ---")
+        messages = get_channel_messages(ch["id"], since_dt)
+        if messages is None:
+            print("  → スキップ")
             continue
+        all_text += f"\n\n--- チャンネル: #{ch['name']} ---\n"
         if not messages:
             all_text += "投稿なし\n"
         else:
             for msg in reversed(messages):
-                # 投稿者名・時刻・内容
-                dt = datetime.datetime.fromisoformat(
-                    msg["timestamp"].replace("Z", "+00:00")
-                ).astimezone(JST)
+                dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z", "+00:00")).astimezone(JST)
                 time_str = dt.strftime("%H:%M")
                 author = msg["author"]["username"]
                 content = msg["content"]
@@ -101,6 +114,22 @@ botによる自動投稿（例：cron、通知系）も含めます。
     return response.text
 
 
+def post_to_discord(summary):
+    # 2000文字ごとに分割して送信
+    for i in range(0, len(summary), 2000):
+        chunk = summary[i : i + 2000]
+        data = {"content": chunk}
+        r = requests.post(
+            WEBHOOK_URL,
+            data=json.dumps(data),
+            headers={"Content-Type": "application/json"},
+        )
+        if r.status_code not in (200, 204):
+            print(f"投稿失敗: {r.text}")
+            return False
+    return True
+
+
 app = Flask(__name__)
 
 
@@ -115,17 +144,27 @@ def daily_summary():
         title = f"🗓️ {today.strftime('%Y年%m月%d日')}（{day_of_week}）投稿サマリー（全チャンネル確認済）\n\n"
         final_summary = title + summary
         # Discordに投稿
-        data = {"content": final_summary}
-        r = requests.post(
-            WEBHOOK_URL,
-            data=json.dumps(data),
-            headers={"Content-Type": "application/json"},
-        )
-        if r.status_code in (200, 204):
+        if post_to_discord(final_summary):
             return jsonify(
                 {"status": "success", "message": "投稿完了", "summary": final_summary}
             )
         else:
-            return jsonify({"status": "error", "message": f"投稿失敗: {r.text}"}), 500
+            return jsonify({"status": "error", "message": "投稿失敗"}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+
+    print("=== Exception ===")
+    traceback.print_exc()
+    return jsonify({"status": "error", "message": str(e)}), 500
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    app.run(host="0.0.0.0", port=5001, debug=True)  # 5001や5002など空いているポートに
