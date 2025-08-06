@@ -1,8 +1,7 @@
 {
   "functions": {
-    "api/daily_summary.py": {
-      "runtime": "python3.12",
-      "maxDuration": 300
+    "api/*.py": {
+      "runtime": "@vercel/python"
     }
   },
   "crons": [
