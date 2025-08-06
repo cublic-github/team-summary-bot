@@ -139,9 +139,9 @@ app = Flask(__name__)
 
 @app.route("/api/daily-summary", methods=["GET", "POST"])
 def daily_summary():
-    print("hello")  # デバッグ用
     # ここにサマリー生成・投稿処理
-    return jsonify({"status": "ok"})
+    result = run_summary_job()  # あなたの処理
+    return jsonify(result)
 
 
 @app.errorhandler(Exception)
