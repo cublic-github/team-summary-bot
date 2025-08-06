@@ -4,6 +4,7 @@ import datetime
 import google.generativeai as genai
 import asyncio
 import json
+from flask import Flask, request, jsonify
 
 # ---------------------------------
 # ▼▼▼ 設定項目 ▼▼▼
@@ -192,9 +193,13 @@ botによる自動投稿（例：cron、通知系）も含めます。
 
 
 # Vercel Serverless Function のエントリーポイント
-def handler(request, response):
+app = Flask(__name__)
+
+
+@app.route("/api/daily-summary", methods=["POST"])
+def daily_summary():
     try:
         result = asyncio.run(create_discord_summary())
-        return json.dumps(result, ensure_ascii=False)
+        return jsonify(result)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
+        return jsonify({"status": "error", "message": str(e)}), 500
