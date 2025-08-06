@@ -3,7 +3,6 @@ import os
 import datetime
 import google.generativeai as genai
 import asyncio
-from typing import Dict, Any
 import json
 
 # ---------------------------------
@@ -192,20 +191,10 @@ botによる自動投稿（例：cron、通知系）も含めます。
         await client.close()
 
 
-def handler(request):
-    import json
-    import asyncio
-
+# Vercel Serverless Function のエントリーポイント
+def handler(request, response):
     try:
         result = asyncio.run(create_discord_summary())
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(result, ensure_ascii=False),
-        }
+        return json.dumps(result, ensure_ascii=False)
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": str(e)}, ensure_ascii=False),
-        }
+        return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
