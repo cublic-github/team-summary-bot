@@ -88,7 +88,7 @@ Vercelのプロジェクト設定で、以下の環境変数を設定する必�
 graph TD
     subgraph "Vercelプラットフォーム"
         Cron(⏰ Vercel Cron Job)
-        ServerlessFunc[🤖 Pythonサーバーレス関数<br>(api/daily_summary.py)]
+        ServerlessFunc[🤖 Pythonサーバーレス関数]
     end
 
     subgraph "外部API"
@@ -102,11 +102,11 @@ graph TD
     end
 
     %% フロー
-    Cron -- "毎日10時 (JST)" --> ServerlessFunc
-    ServerlessFunc -- "Botトークンで認証し<br>全チャンネルの履歴を要求" --> DiscordAPI
-    DiscordAPI -- "チャット履歴を返す" --> ServerlessFunc
-    ServerlessFunc -- "履歴テキストと<br>プロンプトを送信" --> GeminiAPI
-    GeminiAPI -- "生成された要約文を返す" --> ServerlessFunc
-    ServerlessFunc -- "Webhook URLを使い<br>最終的なサマリーを投稿" --> TargetChannel
-    TargetChannel -- "サマリーを表示" --> Server
+    Cron -- "毎日10時 (JST)に実行" --> ServerlessFunc
+    ServerlessFunc -- "チャット履歴を要求" --> DiscordAPI
+    DiscordAPI -- "履歴データを返す" --> ServerlessFunc
+    ServerlessFunc -- "履歴を送信し要約を依頼" --> GeminiAPI
+    GeminiAPI -- "要約テキストを返す" --> ServerlessFunc
+    ServerlessFunc -- "Webhookでサマリーを投稿" --> TargetChannel
+    TargetChannel -- "ユーザーに表示" --> Server
 ```
