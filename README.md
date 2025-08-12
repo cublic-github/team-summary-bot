@@ -26,7 +26,7 @@
 graph TD
     subgraph "Vercelプラットフォーム"
         Cron(⏰ Vercel Cron Job)
-        ServerlessFunc[🤖 Pythonサーバーレス関数<br>(api/daily_summary.py)]
+        "ServerlessFunc[🤖 Pythonサーバーレス関数<br>(api/daily_summary.py)]"
     end
 
     subgraph "外部API"
