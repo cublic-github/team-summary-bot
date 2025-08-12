@@ -47,3 +47,4 @@ graph TD
     GeminiAPI -- "生成された要約文を返す" --> ServerlessFunc
     ServerlessFunc -- "Webhook URLを使い<br>最終的なサマリーを投稿" --> TargetChannel
     TargetChannel -- "サマリーを表示" --> Server
+```
