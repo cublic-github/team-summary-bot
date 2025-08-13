@@ -87,28 +87,26 @@ Vercelのプロジェクト設定で、以下の環境変数を設定する必�
 ```mermaid
 graph TD
     subgraph "Vercelプラットフォーム"
-        ServerlessFunc["Pythonサーバーレス関数"]
+        Cron(⏰ Vercel Cron Job)
+        ServerlessFunc[🤖 Pythonサーバーレス関数]
     end
 
-    subgraph "Discordの機能"
-        DiscordAPI["Discord API (読み取り)"]
-        Webhook["Discord Webhook (書き込み)"]
+    subgraph "外部API"
+        DiscordAPI(🔌 Discord API)
+        GeminiAPI(🧠 Google Gemini API)
     end
 
-    subgraph "外部AI"
-        GeminiAPI["Google Gemini API"]
-    end
-    
-    subgraph "Discordサーバー"
-        TargetChannel["投稿先チャンネル"]
+    subgraph "Discord"
+        Server(🏢 Discordサーバー)
+        TargetChannel(🎯 投稿先チャンネル)
     end
 
     %% フロー
-    ServerlessFunc -- "Vercel Cronで毎日10時に起動" --> ServerlessFunc
-    ServerlessFunc -- "Botトークンで履歴を要求" --> DiscordAPI
-    DiscordAPI -- "チャット履歴を返す" --> ServerlessFunc
-    ServerlessFunc -- "収集した履歴を送信し要約を依頼" --> GeminiAPI
-    GeminiAPI -- "要約文を返す" --> ServerlessFunc
-    ServerlessFunc -- "Webhook URLにサマリーを投稿" --> Webhook
-    Webhook -- "チャンネルにメッセージを書き込む" --> TargetChannel
+    Cron -- "毎日10時 (JST)に実行" --> ServerlessFunc
+    ServerlessFunc -- "Botトークンを使いチャット履歴を要求" --> DiscordAPI
+    DiscordAPI -- "履歴データを返す" --> ServerlessFunc
+    ServerlessFunc -- "履歴を送信し要約を依頼" --> GeminiAPI
+    GeminiAPI -- "要約テキストを返す" --> ServerlessFunc
+    ServerlessFunc -- "Webhookでサマリーを投稿" --> TargetChannel
+    TargetChannel -- "ユーザーに表示" --> Server
 ```
