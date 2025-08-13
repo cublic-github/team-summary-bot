@@ -142,11 +142,10 @@ def daily_summary():
     all_text = build_all_text()
     summary = generate_summary(all_text)
     # タイトルをPythonで付与
-    JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
-    today = datetime.datetime.now(JST)
+    target = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    day_of_week = weekdays[today.weekday()]
-    title = f"🗓️ {today.strftime('%Y年%m月%d日')}（{day_of_week}）サマリー\n\n"
+    day_of_week = weekdays[target.weekday()]
+    title = f"🗓️ {target.strftime('%Y年%m月%d日')}（{day_of_week}）サマリー\n\n"
     final_summary = title + summary
     post_to_discord(final_summary)
     return jsonify({"status": "success", "summary": final_summary})
