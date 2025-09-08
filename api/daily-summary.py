@@ -46,27 +46,84 @@ def get_channel_messages(channel_id, since_dt):
     return filtered
 
 
+# 追加: ギルド内のアクティブなスレッド一覧
+def get_active_threads():
+    url = f"https://discord.com/api/v10/guilds/{GUILD_ID}/threads/active"
+    headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
+    r = requests.get(url, headers=headers, timeout=15)
+    r.raise_for_status()
+    return r.json().get("threads", [])  # threads配列
+
+# 追加: チャンネルの公開アーカイブ済みスレッド（直近分）
+def get_public_archived_threads(channel_id, before=None):
+    url = f"https://discord.com/api/v10/channels/{channel_id}/threads/archived/public"
+    headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
+    params = {}
+    if before:
+        params["before"] = before  # ISO8601文字列
+    r = requests.get(url, headers=headers, params=params, timeout=15)
+    if r.status_code == 403:
+        return []
+    r.raise_for_status()
+    return r.json().get("threads", [])
+
+# 修正: build_all_text にスレッド収集を追加
 def build_all_text():
     since_dt = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     all_text = ""
+
+    active_threads = get_active_threads()  # 先に全アクティブ取得
+    threads_by_parent = {}
+    for t in active_threads:
+        pid = t.get("parent_id")
+        if pid:
+            threads_by_parent.setdefault(pid, []).append(t)
+
     for ch in get_channel_list():
         print(f"--- チャンネル: #{ch['name']} ---")
+        # 本体メッセージ
         messages = get_channel_messages(ch["id"], since_dt)
         if messages is None:
             print("  → スキップ")
-            continue
-        all_text += f"\n\n--- チャンネル: #{ch['name']} ---\n"
-        if not messages:
-            all_text += "投稿なし\n"
         else:
-            for msg in reversed(messages):
-                dt = datetime.datetime.fromisoformat(
-                    msg["timestamp"].replace("Z", "+00:00")
-                ).astimezone(JST)
-                time_str = dt.strftime("%H:%M")
-                author = msg["author"]["username"]
-                content = msg["content"]
-                all_text += f"{time_str} {author}: {content}\n"
+            all_text += f"\n\n--- チャンネル: #{ch['name']} ---\n"
+            if not messages:
+                all_text += "投稿なし\n"
+            else:
+                for msg in reversed(messages):
+                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+
+        # スレッド（アクティブ）
+        for t in threads_by_parent.get(ch["id"], []):
+            all_text += f"\n--- スレッド: {t.get('name','(no title)')} ---\n"
+            t_msgs = get_channel_messages(t["id"], since_dt)
+            if not t_msgs:
+                all_text += "投稿なし\n"
+            else:
+                for msg in reversed(t_msgs):
+                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+
+        # スレッド（公開アーカイブの直近分も拾う・必要に応じて）
+        archived = get_public_archived_threads(ch["id"])
+        for t in archived:
+            # 直近24hに関わるものだけ
+            meta = t.get("thread_metadata", {})
+            arch_ts = meta.get("archive_timestamp")
+            if arch_ts:
+                arch_dt = datetime.datetime.fromisoformat(arch_ts.replace("Z","+00:00"))
+                if arch_dt < since_dt:
+                    continue
+            all_text += f"\n--- スレッド(アーカイブ): {t.get('name','(no title)')} ---\n"
+            t_msgs = get_channel_messages(t["id"], since_dt)
+            if not t_msgs:
+                all_text += "投稿なし\n"
+            else:
+                for msg in reversed(t_msgs):
+                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+
     return all_text
 
 
