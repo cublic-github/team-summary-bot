@@ -8,6 +8,7 @@ import google.generativeai as genai
 import json
 from flask import Flask, request, jsonify
 import logging
+import sys
 
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 GUILD_ID = "1024957065686433802"
@@ -44,11 +45,27 @@ class DiscordWebhookHandler(logging.Handler):
 logger = logging.getLogger("daily_summary")
 logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
-_stream = logging.StreamHandler()
-_stream.setLevel(logging.INFO)
+
+class MaxLevelFilter(logging.Filter):
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        return record.levelno <= self.max_level
+
+
 _formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-_stream.setFormatter(_formatter)
-logger.addHandler(_stream)
+
+stdout_handler = logging.StreamHandler(stream=sys.stdout)
+stdout_handler.setLevel(logging.DEBUG)
+stdout_handler.addFilter(MaxLevelFilter(logging.INFO))
+stdout_handler.setFormatter(_formatter)
+logger.addHandler(stdout_handler)
+
+stderr_handler = logging.StreamHandler(stream=sys.stderr)
+stderr_handler.setLevel(logging.WARNING)
+stderr_handler.setFormatter(_formatter)
+logger.addHandler(stderr_handler)
 
 if DISCORD_LOG_WEBHOOK_URL:
     _discord = DiscordWebhookHandler(DISCORD_LOG_WEBHOOK_URL)
