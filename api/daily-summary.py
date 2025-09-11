@@ -7,11 +7,56 @@ import datetime
 import google.generativeai as genai
 import json
 from flask import Flask, request, jsonify
+import logging
 
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 GUILD_ID = "1024957065686433802"
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
+
+DISCORD_LOG_WEBHOOK_URL = os.getenv("DISCORD_LOG_WEBHOOK_URL")
+
+
+class DiscordWebhookHandler(logging.Handler):
+    def __init__(self, webhook_url, username="TeamSummaryBot Logs"):
+        super().__init__()
+        self.webhook_url = webhook_url
+        self.username = username
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            # Discordは2000文字制限。少し余裕を見て分割。
+            for i in range(0, len(msg), 1800):
+                chunk = msg[i : i + 1800]
+                data = {"content": f"[{record.levelname}] {chunk}"}
+                requests.post(
+                    self.webhook_url,
+                    data=json.dumps(data),
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+        except Exception:
+            # ログ送信失敗時は握りつぶす（無限ループ回避）
+            pass
+
+
+logger = logging.getLogger("daily_summary")
+logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
+
+_stream = logging.StreamHandler()
+_stream.setLevel(logging.INFO)
+_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+_stream.setFormatter(_formatter)
+logger.addHandler(_stream)
+
+if DISCORD_LOG_WEBHOOK_URL:
+    _discord = DiscordWebhookHandler(DISCORD_LOG_WEBHOOK_URL)
+    # 既定ではWARNING以上のみDiscordへ（スパム防止）
+    DISCORD_LOG_LEVEL = os.getenv("DISCORD_LOG_LEVEL", "WARNING").upper()
+    _discord.setLevel(getattr(logging, DISCORD_LOG_LEVEL, logging.WARNING))
+    _discord.setFormatter(_formatter)
+    logger.addHandler(_discord)
 
 
 def get_channel_list():
@@ -27,12 +72,12 @@ def get_channel_messages(channel_id, since_dt):
     headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
     params = {"limit": 100}
     r = requests.get(url, headers=headers, params=params)
-    print(f"Channel: {channel_id}, Status: {r.status_code}")
+    logger.info(f"Channel: {channel_id}, Status: {r.status_code}")
     if r.status_code == 403:
-        print(f"  → 権限なし")
+        logger.warning("  → 権限なし")
         return None
     if r.status_code != 200:
-        print(f"  → エラー: {r.text}")
+        logger.error(f"  → エラー: {r.text}")
         return None
     messages = r.json()
     filtered = []
@@ -42,7 +87,7 @@ def get_channel_messages(channel_id, since_dt):
         )
         if msg_dt > since_dt:
             filtered.append(msg)
-    print(f"  → {len(filtered)}件のメッセージを取得")
+    logger.info(f"  → {len(filtered)}件のメッセージを取得")
     return filtered
 
 
@@ -53,6 +98,7 @@ def get_active_threads():
     r = requests.get(url, headers=headers, timeout=15)
     r.raise_for_status()
     return r.json().get("threads", [])  # threads配列
+
 
 # 追加: チャンネルの公開アーカイブ済みスレッド（直近分）
 def get_public_archived_threads(channel_id, before=None):
@@ -67,6 +113,7 @@ def get_public_archived_threads(channel_id, before=None):
     r.raise_for_status()
     return r.json().get("threads", [])
 
+
 # 修正: build_all_text にスレッド収集を追加
 def build_all_text():
     since_dt = datetime.datetime.now(JST) - datetime.timedelta(days=1)
@@ -80,18 +127,20 @@ def build_all_text():
             threads_by_parent.setdefault(pid, []).append(t)
 
     for ch in get_channel_list():
-        print(f"--- チャンネル: #{ch['name']} ---")
+        logger.info(f"--- チャンネル: #{ch['name']} ---")
         # 本体メッセージ
         messages = get_channel_messages(ch["id"], since_dt)
         if messages is None:
-            print("  → スキップ")
+            logger.info("  → スキップ")
         else:
             all_text += f"\n\n--- チャンネル: #{ch['name']} ---\n"
             if not messages:
                 all_text += "投稿なし\n"
             else:
                 for msg in reversed(messages):
-                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    dt = datetime.datetime.fromisoformat(
+                        msg["timestamp"].replace("Z", "+00:00")
+                    ).astimezone(JST)
                     all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
 
         # スレッド（アクティブ）
@@ -102,7 +151,9 @@ def build_all_text():
                 all_text += "投稿なし\n"
             else:
                 for msg in reversed(t_msgs):
-                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    dt = datetime.datetime.fromisoformat(
+                        msg["timestamp"].replace("Z", "+00:00")
+                    ).astimezone(JST)
                     all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
 
         # スレッド（公開アーカイブの直近分も拾う・必要に応じて）
@@ -112,16 +163,22 @@ def build_all_text():
             meta = t.get("thread_metadata", {})
             arch_ts = meta.get("archive_timestamp")
             if arch_ts:
-                arch_dt = datetime.datetime.fromisoformat(arch_ts.replace("Z","+00:00"))
+                arch_dt = datetime.datetime.fromisoformat(
+                    arch_ts.replace("Z", "+00:00")
+                )
                 if arch_dt < since_dt:
                     continue
-            all_text += f"\n--- スレッド(アーカイブ): {t.get('name','(no title)')} ---\n"
+            all_text += (
+                f"\n--- スレッド(アーカイブ): {t.get('name','(no title)')} ---\n"
+            )
             t_msgs = get_channel_messages(t["id"], since_dt)
             if not t_msgs:
                 all_text += "投稿なし\n"
             else:
                 for msg in reversed(t_msgs):
-                    dt = datetime.datetime.fromisoformat(msg["timestamp"].replace("Z","+00:00")).astimezone(JST)
+                    dt = datetime.datetime.fromisoformat(
+                        msg["timestamp"].replace("Z", "+00:00")
+                    ).astimezone(JST)
                     all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
 
     return all_text
@@ -130,7 +187,7 @@ def build_all_text():
 def generate_summary(all_text):
     gemini_api_key = os.environ["GEMINI_API_KEY"]
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.5-pro-preview-06-05")
+    model_candidates = ["gemini-2.5-pro", "gemini-1.5-flash"]
     prompt = f"""【タスク】
 チャット履歴を確認し、社内での出来事・動きの全体像を把握するための日次サマリーを作成してください。
 
@@ -170,8 +227,19 @@ botによる自動投稿（例：cron、通知系）も含めます。
 {all_text}
 ---
 """
-    response = model.generate_content(prompt)
-    return response.text
+    last_err = None
+
+    for name in model_candidates:
+        try:
+            logger.info(f"generate_summary: trying model={name}")
+            model = genai.GenerativeModel(name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            logger.error(f"generate_summary: {name} failed: {e}")
+            last_err = e
+
+    raise last_err or RuntimeError("All model attempts failed")
 
 
 def post_to_discord(final_summary):
@@ -185,9 +253,23 @@ def post_to_discord(final_summary):
             headers={"Content-Type": "application/json"},
         )
         if r.status_code not in (200, 204):
-            print(f"投稿失敗: {r.text}")
+            logger.error(f"投稿失敗: {r.status_code} {r.text}")
             return False
     return True
+
+
+def send_discord_log(message):
+    if not DISCORD_LOG_WEBHOOK_URL:
+        return
+    try:
+        requests.post(
+            DISCORD_LOG_WEBHOOK_URL,
+            data=json.dumps({"content": message}),
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 app = Flask(__name__)
@@ -195,15 +277,22 @@ app = Flask(__name__)
 
 @app.route("/api/daily-summary", methods=["GET", "POST"])
 def daily_summary():
+    logger.info("daily-summary: job started")
     all_text = build_all_text()
+    logger.info(f"daily-summary: collected text length={len(all_text)}")
     summary = generate_summary(all_text)
-    # タイトルをPythonで付与
     target = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     day_of_week = weekdays[target.weekday()]
     title = f"🗓️ {target.strftime('%Y年%m月%d日')}（{day_of_week}）サマリー\n\n"
     final_summary = title + summary
-    post_to_discord(final_summary)
+    ok = post_to_discord(final_summary)
+    logger.info(
+        f"daily-summary: post_to_discord ok={ok} total_length={len(final_summary)}"
+    )
+    # 追記: 成功時のみ一言通知
+    if ok:
+        send_discord_log("✅ daily-summary 成功")
     return jsonify({"status": "success", "summary": final_summary})
 
 
@@ -211,8 +300,7 @@ def daily_summary():
 def handle_exception(e):
     import traceback
 
-    print("=== Exception ===")
-    traceback.print_exc()
+    logger.exception("=== Exception in daily-summary ===")
     return jsonify({"status": "error", "message": str(e)}), 500
 
 
