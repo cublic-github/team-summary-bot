@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()  # .envファイルから環境変数を読み込む
 import requests
 import datetime
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 from flask import Flask, request, jsonify
 import logging
@@ -217,9 +218,10 @@ def build_all_text():
 
 
 def generate_summary(all_text):
-    gemini_api_key = os.environ["GEMINI_API_KEY"]
-    genai.configure(api_key=gemini_api_key)
+    # 新SDK: google-genai を使用（APIキーは環境変数 GEMINI_API_KEY から自動取得）
+    client = genai.Client()
     model_candidates = ["gemini-2.5-pro", "gemini-1.5-flash"]
+
     prompt = f"""【タスク】
 チャット履歴を確認し、社内での出来事・動きの全体像を把握するための日次サマリーを作成してください。
 
@@ -260,13 +262,18 @@ botによる自動投稿（例：cron、通知系）も含めます。
 ---
 """
     last_err = None
-
     for name in model_candidates:
         try:
             logger.info(f"generate_summary: trying model={name}")
-            model = genai.GenerativeModel(name)
-            response = model.generate_content(prompt)
-            return response.text
+            resp = client.models.generate_content(
+                model=name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=2048,
+                    temperature=0.2,
+                ),
+            )
+            return resp.text
         except Exception as e:
             logger.error(f"generate_summary: {name} failed: {e}")
             last_err = e
