@@ -31,19 +31,26 @@ class DiscordWebhookHandler(logging.Handler):
             for i in range(0, len(msg), 1800):
                 chunk = msg[i : i + 1800]
                 data = {"content": f"[{record.levelname}] {chunk}"}
-                requests.post(
+                response = requests.post(
                     self.webhook_url,
                     data=json.dumps(data),
                     headers={"Content-Type": "application/json"},
                     timeout=10,
                 )
-        except Exception:
-            # ログ送信失敗時は握りつぶす（無限ループ回避）
-            pass
+                # デバッグ用：レスポンスステータスをチェック
+                if response.status_code not in (200, 204):
+                    print(f"Discord webhook failed: {response.status_code} {response.text}")
+        except Exception as e:
+            # ログ送信失敗時はコンソールに出力（デバッグ用）
+            print(f"Discord webhook error: {e}")
 
 
+# カスタムロガーを作成（Flaskのloggerと分離）
 logger = logging.getLogger("daily_summary")
 logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
+
+# Flaskのデフォルトログを無効化してログ重複を防ぐ
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 
 class MaxLevelFilter(logging.Filter):
@@ -55,6 +62,9 @@ class MaxLevelFilter(logging.Filter):
 
 
 _formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+# 既存のハンドラーをクリア（重複防止）
+logger.handlers.clear()
 
 stdout_handler = logging.StreamHandler(stream=sys.stdout)
 stdout_handler.setLevel(logging.DEBUG)
@@ -69,9 +79,9 @@ logger.addHandler(stderr_handler)
 
 if DISCORD_LOG_WEBHOOK_URL:
     _discord = DiscordWebhookHandler(DISCORD_LOG_WEBHOOK_URL)
-    # 既定ではWARNING以上のみDiscordへ（スパム防止）
-    DISCORD_LOG_LEVEL = os.getenv("DISCORD_LOG_LEVEL", "WARNING").upper()
-    _discord.setLevel(getattr(logging, DISCORD_LOG_LEVEL, logging.WARNING))
+    # INFOレベル以上をDiscordに送信（成功メッセージも含める）
+    DISCORD_LOG_LEVEL = os.getenv("DISCORD_LOG_LEVEL", "INFO").upper()
+    _discord.setLevel(getattr(logging, DISCORD_LOG_LEVEL, logging.INFO))
     _discord.setFormatter(_formatter)
     logger.addHandler(_discord)
 
@@ -277,19 +287,25 @@ def post_to_discord(final_summary):
 
 def send_discord_log(message):
     if not DISCORD_LOG_WEBHOOK_URL:
+        logger.warning("DISCORD_LOG_WEBHOOK_URL not configured")
         return
     try:
-        requests.post(
+        response = requests.post(
             DISCORD_LOG_WEBHOOK_URL,
             data=json.dumps({"content": message}),
             headers={"Content-Type": "application/json"},
             timeout=10,
         )
-    except Exception:
-        pass
+        if response.status_code not in (200, 204):
+            logger.error(f"Discord log webhook failed: {response.status_code} {response.text}")
+    except Exception as e:
+        logger.error(f"Discord log webhook error: {e}")
 
 
 app = Flask(__name__)
+
+# Flaskのログレベルを調整してログ重複を防ぐ
+app.logger.setLevel(logging.WARNING)
 
 
 @app.route("/api/daily-summary", methods=["GET", "POST"])
@@ -307,17 +323,20 @@ def daily_summary():
     logger.info(
         f"daily-summary: post_to_discord ok={ok} total_length={len(final_summary)}"
     )
-    # 追記: 成功時のみ一言通知
+    # 成功時のログをINFOレベルで出力（Discordにも送信される）
     if ok:
-        send_discord_log("✅ daily-summary 成功")
+        logger.info("✅ daily-summary 成功")
+    else:
+        logger.error("❌ daily-summary 失敗")
     return jsonify({"status": "success", "summary": final_summary})
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     import traceback
-
-    logger.exception("=== Exception in daily-summary ===")
+    
+    error_msg = f"Exception in daily-summary: {str(e)}\n{traceback.format_exc()}"
+    logger.error(error_msg)
     return jsonify({"status": "error", "message": str(e)}), 500
 
 
