@@ -273,10 +273,37 @@ botによる自動投稿（例：cron、通知系）も含めます。
                     temperature=0.2,
                 ),
             )
-            return resp.text
+            text = getattr(resp, "text", None)
+            if not text:
+                try:
+                    c0 = (resp.candidates or [None])[0]
+                    parts = getattr(getattr(c0, "content", None), "parts", []) or []
+                    text = "".join(
+                        [(getattr(p, "text", "") or "") for p in parts]
+                    ).strip()
+                except Exception as e2:
+                    logger.warning(f"generate_summary: extract parts failed: {e2}")
+                    text = ""
+            if text:
+                return text
+            else:
+                fr = None
+                try:
+                    fr = getattr((resp.candidates or [None])[0], "finish_reason", None)
+                except Exception:
+                    pass
+                logger.warning(
+                    f"generate_summary: empty text from {name}, finishReason={fr}"
+                )
         except Exception as e:
             logger.error(f"generate_summary: {name} failed: {e}")
             last_err = e
+
+    # 最終フォールバック（必ず str を返す）
+    fallback = "（自動生成に失敗しました。入力ログの先頭を添付します）\n\n" + (
+        all_text[:800] or ""
+    )
+    return fallback
 
     raise last_err or RuntimeError("All model attempts failed")
 
@@ -352,6 +379,10 @@ def daily_summary():
     all_text = build_all_text()
     logger.info(f"daily-summary: collected text length={len(all_text)}")
     summary = generate_summary(all_text)
+    if not summary:
+        logger.error("generate_summary returned empty; using fallback text")
+        summary = "（自動生成に失敗しました）"
+        
     target = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     day_of_week = weekdays[target.weekday()]
