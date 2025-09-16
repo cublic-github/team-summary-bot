@@ -100,17 +100,21 @@ def get_channel_list():
     return [ch for ch in r.json() if ch["type"] == 0]  # type=0: text channel
 
 
-def get_channel_messages(channel_id, since_dt):
+def get_channel_messages(channel_id, since_dt, *, kind="channel", name=None):
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
     params = {"limit": 100}
     r = requests.get(url, headers=headers, params=params)
-    logger.info(f"Channel: {channel_id}, Status: {r.status_code}")
+    logger.info(f"{kind.title()}: {name or channel_id}, Status: {r.status_code}")
     if r.status_code == 403:
         logger.warning("  → 権限なし")
         return None
     if r.status_code != 200:
         logger.error(f"  → エラー: {r.text}")
+        _log_error_to_discord(
+            "❌ get_channel_messages:",
+            f"{kind}={name or channel_id} status={r.status_code} body={r.text[:200]}",
+        )
         return None
     messages = r.json()
     filtered = []
@@ -147,7 +151,6 @@ def get_public_archived_threads(channel_id, before=None):
     return r.json().get("threads", [])
 
 
-# 修正: build_all_text にスレッド収集を追加
 def build_all_text():
     since_dt = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     all_text = ""
@@ -162,7 +165,9 @@ def build_all_text():
     for ch in get_channel_list():
         logger.info(f"--- チャンネル: #{ch['name']} ---")
         # 本体メッセージ
-        messages = get_channel_messages(ch["id"], since_dt)
+        messages = get_channel_messages(
+            ch["id"], since_dt, kind="channel", name=ch["name"]
+        )
         if messages is None:
             logger.info("  → スキップ")
         else:
@@ -179,7 +184,9 @@ def build_all_text():
         # スレッド（アクティブ）
         for t in threads_by_parent.get(ch["id"], []):
             all_text += f"\n--- スレッド: {t.get('name','(no title)')} ---\n"
-            t_msgs = get_channel_messages(t["id"], since_dt)
+            t_msgs = get_channel_messages(
+                t["id"], since_dt, kind="thread", name=t.get("name", "(no title)")
+            )
             if not t_msgs:
                 all_text += "投稿なし\n"
             else:
@@ -204,7 +211,9 @@ def build_all_text():
             all_text += (
                 f"\n--- スレッド(アーカイブ): {t.get('name','(no title)')} ---\n"
             )
-            t_msgs = get_channel_messages(t["id"], since_dt)
+            t_msgs = get_channel_messages(
+                t["id"], since_dt, kind="thread", name=t.get("name", "(no title)")
+            )
             if not t_msgs:
                 all_text += "投稿なし\n"
             else:
@@ -269,7 +278,7 @@ botによる自動投稿（例：cron、通知系）も含めます。
                 model=name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=2048,
+                    max_output_tokens=10000,
                     temperature=0.2,
                 ),
             )
@@ -285,6 +294,11 @@ botによる自動投稿（例：cron、通知系）も含めます。
                     logger.warning(f"generate_summary: extract parts failed: {e2}")
                     text = ""
             if text:
+                try:
+                    usage = getattr(resp, "usage_metadata", None)
+                    post_discord_log_direct(f"🧠 model_used={name} usage={usage}")
+                except Exception as e_log:
+                    logger.warning(f"generate_summary: model log failed: {e_log}")
                 return text
             else:
                 fr = None
@@ -297,6 +311,7 @@ botによる自動投稿（例：cron、通知系）も含めます。
                 )
         except Exception as e:
             logger.error(f"generate_summary: {name} failed: {e}")
+            _log_error_to_discord("❌ generate_summary:", f"{name} failed: {e}")
             last_err = e
 
     # 最終フォールバック（必ず str を返す）
@@ -320,6 +335,9 @@ def post_to_discord(final_summary):
         )
         if r.status_code not in (200, 204):
             logger.error(f"投稿失敗: {r.status_code} {r.text}")
+            _log_error_to_discord(
+                "❌ post_to_discord:", f"status={r.status_code} body={r.text[:200]}"
+            )
             return False
     return True
 
@@ -358,6 +376,16 @@ def post_discord_log_direct(content):
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+def _log_error_to_discord(prefix, message):
+    try:
+        ok, err = post_discord_log_direct(f"{prefix} {message}")
+        if not ok:
+            logger.warning(f"Discord log send failed: {err}")
+    except Exception as e:
+        # 最後の砦としてWARNに残す（Discord側が落ちている場合など）
+        logger.warning(f"Discord log send exception: {e}")
 
 
 app = Flask(__name__)
@@ -406,6 +434,10 @@ def handle_exception(e):
 
     error_msg = f"Exception in daily-summary: {str(e)}\n{traceback.format_exc()}"
     logger.error(error_msg)
+    try:
+        _log_error_to_discord("🔥 unhandled:", error_msg[:1500])
+    except Exception:
+        pass
     return jsonify({"status": "error", "message": str(e)}), 500
 
 
