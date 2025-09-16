@@ -67,7 +67,7 @@ class MaxLevelFilter(logging.Filter):
         return record.levelno <= self.max_level
 
 
-_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
 
 # 既存のハンドラーをクリア（重複防止）
 logger.handlers.clear()
@@ -382,7 +382,7 @@ def daily_summary():
     if not summary:
         logger.error("generate_summary returned empty; using fallback text")
         summary = "（自動生成に失敗しました）"
-        
+
     target = datetime.datetime.now(JST) - datetime.timedelta(days=1)
     weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     day_of_week = weekdays[target.weekday()]
