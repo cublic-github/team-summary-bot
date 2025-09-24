@@ -18,6 +18,129 @@ JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
 
 DISCORD_LOG_WEBHOOK_URL = os.getenv("DISCORD_LOG_WEBHOOK_URL")
 
+MEMBER_LIST = [
+    {
+        "member_name": "酒井",
+        "id": "1349135457463570604",
+        "username": "jiujing_97925",
+        "global_name": "酒井",
+        "nick": None,
+    },
+    {
+        "member_name": "原田",
+        "id": "799519737612730378",
+        "username": "yuki.harada",
+        "global_name": "yuki harada",
+        "nick": "Yuki Harada",
+    },
+    {
+        "member_name": "鈴木",
+        "id": "790129940002766859",
+        "username": "axis1996jp",
+        "global_name": "T.Suzuki",
+        "nick": "Suzuki.T 平日10–19時/1時間ごと確認/全力貢献",
+    },
+    {
+        "member_name": "中尾",
+        "id": "1376722971602718720",
+        "username": "nakao_tn_87506",
+        "global_name": "中尾鷹也/Nakao Takanari（9/17稼働不可）",
+        "nick": None,
+    },
+    {
+        "member_name": "馬越",
+        "id": "1113729171617763369",
+        "username": "kentaumakoshi",
+        "global_name": "Kenta Umakoshi",
+        "nick": None,
+    },
+    {
+        "member_name": "友梨",
+        "id": "824598422778413067",
+        "username": "yuri_0219_",
+        "global_name": "ゆり",
+        "nick": "yuri suzuki",
+    },
+    {
+        "member_name": "川嵜",
+        "id": "1229319365128749106",
+        "username": "mashu_kawasaki",
+        "global_name": "MASHU KAWASAKI",
+        "nick": None,
+    },
+    {
+        "member_name": "中村",
+        "id": "1212936382205394965",
+        "username": "ikuko0713",
+        "global_name": "Ikuko Nakamura",
+        "nick": None,
+    },
+    {
+        "member_name": "丸山",
+        "id": "1367775681878167562",
+        "username": "c.maruyama0323",
+        "global_name": "まるやま",
+        "nick": None,
+    },
+    {
+        "member_name": "安田",
+        "id": "975951028799303710",
+        "username": "yasuda4832",
+        "global_name": "yasuda",
+        "nick": None,
+    },
+    {
+        "member_name": "本庄",
+        "id": "1377843031134437427",
+        "username": "honjo0705_28823",
+        "global_name": "HONJO（基本在宅🏠・必要に応じ出勤🏃‍♀️🏢）",
+        "nick": None,
+    },
+    {
+        "member_name": "山本",
+        "id": "1311876609535508514",
+        "username": "yamamotokeiko_48619",
+        "global_name": "Yamamoto Keiko",
+        "nick": None,
+    },
+    {
+        "member_name": "小島",
+        "id": "1045228812998291469",
+        "username": "kojima_minako",
+        "global_gname": "KojimaMinako",
+        "nick": None,
+    },
+    {
+        "member_name": "宮田",
+        "id": "1235564478482087956",
+        "username": "rimoa_ayaka",
+        "global_name": "Ayaka",
+        "nick": "Ayaka Miyata",
+    },
+    {
+        "member_name": "大高",
+        "id": "1389229069626773624",
+        "username": "dagaoyingyou_35561",
+        "global_name": "大高瑛祐(毎週木曜日は22時以降対応になります)",
+        "nick": None,
+    },
+]
+
+ID_TO_MEMBER_NAME = {
+    e["id"]: e["member_name"] for e in MEMBER_LIST if e.get("member_name")
+}
+
+
+def resolve_member_name(author: dict) -> str:
+    uid = (author or {}).get("id")
+    if uid and uid in ID_TO_MEMBER_NAME:
+        return ID_TO_MEMBER_NAME[uid]
+    return (
+        (author or {}).get("global_name")
+        or (author or {}).get("username")
+        or (f"user:{uid}" if uid else "unknown")
+    )
+
 
 class DiscordWebhookHandler(logging.Handler):
     def __init__(self, webhook_url, username="TeamSummaryBot Logs"):
@@ -179,7 +302,8 @@ def build_all_text():
                     dt = datetime.datetime.fromisoformat(
                         msg["timestamp"].replace("Z", "+00:00")
                     ).astimezone(JST)
-                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+                    name = resolve_member_name(msg["author"])
+                    all_text += f"{dt.strftime('%H:%M')} {name}: {msg['content']}\n"
 
         # スレッド（アクティブ）
         for t in threads_by_parent.get(ch["id"], []):
@@ -194,7 +318,8 @@ def build_all_text():
                     dt = datetime.datetime.fromisoformat(
                         msg["timestamp"].replace("Z", "+00:00")
                     ).astimezone(JST)
-                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+                    name = resolve_member_name(msg["author"])
+                    all_text += f"{dt.strftime('%H:%M')} {name}: {msg['content']}\n"
 
         # スレッド（公開アーカイブの直近分も拾う・必要に応じて）
         archived = get_public_archived_threads(ch["id"])
@@ -221,7 +346,8 @@ def build_all_text():
                     dt = datetime.datetime.fromisoformat(
                         msg["timestamp"].replace("Z", "+00:00")
                     ).astimezone(JST)
-                    all_text += f"{dt.strftime('%H:%M')} {msg['author']['username']}: {msg['content']}\n"
+                    name = resolve_member_name(msg["author"])
+                    all_text += f"{dt.strftime('%H:%M')} {name}: {msg['content']}\n"
 
     return all_text
 
@@ -242,6 +368,11 @@ botによる自動投稿（例：cron、通知系）も含めます。
 時刻・投稿者・主旨を簡潔にまとめてください。
 投稿が長文または議論が発展している場合は、要点に絞ってまとめてください。
 サマリーの最後に、AI(あなた)から見たチームのやり取りの中での問題点や改善点、評価できる点などを、率直に（メンバーに忖度せず）述べてください。あなたがもしこの会社のメンバーだったら、どのような行動を取るか、という観点から親身なって、フィードバックをしていただきたいです。
+
+【表記ルール】
+投稿者名は必ずメンバー辞書のmember_name（例：酒井、原田、鈴木 等）を使用してください。
+Discordのusername／global_name／nickは出力に用いないでください。
+入力ログの投稿者名はすでにmember_nameに正規化されています。そのままの表記でまとめてください。
 
 【出力フォーマット（例）】
 #出社メンバー連絡用
