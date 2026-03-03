@@ -363,7 +363,7 @@ def build_all_text():
 def generate_summary(all_text):
     # 新SDK: google-genai を使用（APIキーは環境変数 GEMINI_API_KEY から自動取得）
     client = genai.Client()
-    model_candidates = ["gemini-2.5-pro", "gemini-1.5-flash"]
+    model_candidates = ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"]
 
     prompt = f"""【タスク】
 チャット履歴を確認し、社内での出来事・動きの全体像を把握するための日次サマリーを作成してください。
