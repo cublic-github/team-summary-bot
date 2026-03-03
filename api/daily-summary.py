@@ -16,6 +16,11 @@ GUILD_ID = "1024957065686433802"
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
 
+# 分析対象外のチャンネルIDリスト
+EXCLUDED_CHANNEL_IDS = {
+    "1149603662361014282",  # ユニコントロールズhotprofile通知
+}
+
 DISCORD_LOG_WEBHOOK_URL = os.getenv("DISCORD_LOG_WEBHOOK_URL")
 
 MEMBER_LIST = [
@@ -220,7 +225,10 @@ def get_channel_list():
     headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
     r = requests.get(url, headers=headers)
     r.raise_for_status()
-    return [ch for ch in r.json() if ch["type"] == 0]  # type=0: text channel
+    return [
+        ch for ch in r.json()
+        if ch["type"] == 0 and ch["id"] not in EXCLUDED_CHANNEL_IDS
+    ]
 
 
 def get_channel_messages(channel_id, since_dt, *, kind="channel", name=None):
